@@ -78,3 +78,10 @@ def delete_note(user_id: int, note_id: int) -> bool:
             "DELETE FROM notes WHERE id = ? AND user_id = ?", (note_id, user_id)
         )
         return cur.rowcount > 0
+
+
+def delete_all_notes(user_id: int) -> int:
+    """Delete ALL of this user's notes. Returns how many were removed."""
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM notes WHERE user_id = ?", (user_id,))
+        return cur.rowcount

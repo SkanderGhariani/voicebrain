@@ -12,6 +12,7 @@ __pycache__/
 # Data & models (never commit these)
 data/
 models/
+piper/
 *.gguf
 *.db
 *.sqlite

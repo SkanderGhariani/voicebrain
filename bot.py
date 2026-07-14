@@ -28,8 +28,9 @@ from telegram.ext import (
 
 from extract import extract
 from memory import ask, search, store_embedding
-from storage import delete_note, recent_notes, save_note
+from storage import delete_all_notes, delete_note, recent_notes, save_note
 from transcribe import transcribe
+from tts import detect_lang, synthesize
 
 load_dotenv()
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -104,7 +105,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/recent — your latest notes\n"
         "/search <query> — semantic search over your notes\n"
         "/ask <question> — ask your own memory\n"
-        "/delete <id> — remove a note"
+        "/delete <id> — remove a note\n"
+        "/reset — wipe your whole memory"
     )
 
 
@@ -181,6 +183,17 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     answer = await asyncio.to_thread(ask, update.effective_user.id, question)
     await status.edit_text(f"\U0001F4A1 {answer}")
 
+    # Speak the answer back (local TTS). Text stays even if TTS fails.
+    try:
+        lang = detect_lang(answer)
+        ogg = await asyncio.to_thread(synthesize, answer, lang)
+        if ogg:
+            with ogg.open("rb") as f:
+                await update.message.reply_voice(voice=f)
+            ogg.unlink(missing_ok=True)
+    except Exception:
+        log.exception("TTS failed; text answer already delivered")
+
 
 async def recent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     notes = recent_notes(update.effective_user.id, 5)
@@ -192,6 +205,17 @@ async def recent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         topics = ", ".join(json.loads(n["topics"] or "[]"))
         blocks.append(f"#{n['id']} — {n['summary']}" + (f"  [{topics}]" if topics else ""))
     await update.message.reply_text("\U0001F5C3 Recent notes:\n" + "\n".join(blocks))
+
+
+async def reset_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if context.args and context.args[0].lower() == "confirm":
+        n = delete_all_notes(update.effective_user.id)
+        await update.message.reply_text(f"\U0001F9F9 Wiped {n} note(s). Fresh brain.")
+    else:
+        await update.message.reply_text(
+            "⚠️ This deletes ALL your notes, permanently.\n"
+            "If you're sure: /reset confirm"
+        )
 
 
 async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -220,6 +244,7 @@ def main() -> None:
     app.add_handler(CommandHandler("search", search_cmd))
     app.add_handler(CommandHandler("ask", ask_cmd))
     app.add_handler(CommandHandler("delete", delete_cmd))
+    app.add_handler(CommandHandler("reset", reset_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
