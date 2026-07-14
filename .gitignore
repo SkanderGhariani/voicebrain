@@ -1,0 +1,29 @@
+# Environment / secrets
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Data & models (never commit these)
+data/
+models/
+*.gguf
+*.db
+*.sqlite
+
+# Audio scratch
+audio_tmp/
+*.ogg
+*.wav
+*.mp3
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
