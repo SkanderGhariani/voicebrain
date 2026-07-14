@@ -1,14 +1,17 @@
 """VoiceBrain — Telegram bot entry point.
 
-Phase 2: the bot transcribes voice notes locally (faster-whisper) and
-replies with the text + detected language. Extraction comes in Phase 3.
+Phase 3: voice note -> local transcription (faster-whisper) -> structured
+extraction with a local LLM (llama.cpp, schema-constrained JSON) -> SQLite.
 """
 
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
 
+from extract import extract
+from storage import recent_notes, save_note
 from transcribe import transcribe
 
 from dotenv import load_dotenv
@@ -56,7 +59,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     log.info("Voice note saved: %s (%ss)", dest.name, voice.duration)
 
     status = await update.message.reply_text("\U0001F442 Transcribing locally...")
-    # Whisper is CPU-blocking; run it in a worker thread so the bot stays responsive.
+    # Whisper and the LLM are CPU-blocking; run them in a worker thread
+    # so the bot stays responsive to other messages.
     text, lang = await asyncio.to_thread(transcribe, dest)
     dest.unlink(missing_ok=True)  # audio no longer needed once we have the text
 
@@ -64,16 +68,47 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await status.edit_text("\U0001F92B I couldn't hear anything in that note.")
         return
 
-    await status.edit_text(
-        f"\U0001F5E3 Detected language: {lang}\n\n"
-        f"“{text}”\n\n"
-        f"(Structured extraction coming in Phase 3.)"
-    )
+    await status.edit_text("\U0001F9E0 Extracting structure...")
+    data = await asyncio.to_thread(extract, text, lang)
+    note_id = save_note(text, lang, data)
+
+    await status.edit_text(_format_note(note_id, lang, text, data))
+
+
+def _format_note(note_id: int, lang: str, transcript: str, data: dict) -> str:
+    lines = [
+        f"\U0001F4DD Note #{note_id} ({lang})",
+        f"“{transcript}”",
+        "",
+        f"Summary: {data['summary']}",
+    ]
+    if data["tasks"]:
+        lines.append("Tasks:\n" + "\n".join(f"  • {t}" for t in data["tasks"]))
+    if data["dates"]:
+        lines.append("Dates: " + ", ".join(data["dates"]))
+    if data["people"]:
+        lines.append("People: " + ", ".join(data["people"]))
+    if data["topics"]:
+        lines.append("Topics: " + ", ".join(data["topics"]))
+    return "\n".join(lines)
+
+
+async def recent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    notes = recent_notes(5)
+    if not notes:
+        await update.message.reply_text("No notes yet. Send me a voice note!")
+        return
+    blocks = []
+    for n in notes:
+        topics = ", ".join(json.loads(n["topics"] or "[]"))
+        blocks.append(f"#{n['id']} — {n['summary']}" + (f"  [{topics}]" if topics else ""))
+    await update.message.reply_text("\U0001F5C3 Recent notes:\n" + "\n".join(blocks))
 
 
 def main() -> None:
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("recent", recent))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
