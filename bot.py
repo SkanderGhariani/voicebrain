@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 from extract import extract
+from memory import ask, search, store_embedding
 from storage import recent_notes, save_note
 from transcribe import transcribe
 
@@ -71,6 +72,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await status.edit_text("\U0001F9E0 Extracting structure...")
     data = await asyncio.to_thread(extract, text, lang)
     note_id = save_note(text, lang, data)
+    await asyncio.to_thread(store_embedding, note_id, text, data["summary"])
 
     await status.edit_text(_format_note(note_id, lang, text, data))
 
@@ -93,6 +95,31 @@ def _format_note(note_id: int, lang: str, transcript: str, data: dict) -> str:
     return "\n".join(lines)
 
 
+async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = " ".join(context.args) if context.args else ""
+    if not query:
+        await update.message.reply_text("Usage: /search <what you're looking for>")
+        return
+    hits = await asyncio.to_thread(search, query, 5)
+    if not hits:
+        await update.message.reply_text("No notes yet. Send me a voice note!")
+        return
+    lines = ["\U0001F50E Closest notes:"]
+    for h in hits:
+        lines.append(f"#{h['id']} ({h['score']:.2f}) — {h['summary']}")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    question = " ".join(context.args) if context.args else ""
+    if not question:
+        await update.message.reply_text("Usage: /ask <question about your notes>")
+        return
+    status = await update.message.reply_text("\U0001F4DA Reading my memory...")
+    answer = await asyncio.to_thread(ask, question)
+    await status.edit_text(f"\U0001F4A1 {answer}")
+
+
 async def recent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     notes = recent_notes(5)
     if not notes:
@@ -109,6 +136,8 @@ def main() -> None:
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("recent", recent))
+    app.add_handler(CommandHandler("search", search_cmd))
+    app.add_handler(CommandHandler("ask", ask_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 

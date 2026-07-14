@@ -21,7 +21,7 @@ everything, and lets you search your own voice history semantically or ask quest
 - [x] Phase 1 — echo bot (Telegram loop)
 - [x] Phase 2 — ears (local transcription)
 - [x] Phase 3 — brain (structured extraction, local LLM)
-- [ ] Phase 4 — memory (semantic search + /ask RAG)
+- [x] Phase 4 — memory (semantic search + /ask RAG)
 - [ ] Phase 5 — polish (Docker, docs)
 - [ ] Phase 6 — deploy guide
 
