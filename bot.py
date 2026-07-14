@@ -1,13 +1,15 @@
 """VoiceBrain — Telegram bot entry point.
 
-Phase 1: prove the Telegram loop. The bot answers /start, echoes text,
-and downloads voice notes to a local scratch folder, replying with the
-file's metadata. Transcription and extraction come in later phases.
+Phase 2: the bot transcribes voice notes locally (faster-whisper) and
+replies with the text + detected language. Extraction comes in Phase 3.
 """
 
+import asyncio
 import logging
 import os
 from pathlib import Path
+
+from transcribe import transcribe
 
 from dotenv import load_dotenv
 from telegram import Update
@@ -51,15 +53,21 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     tg_file = await voice.get_file()
     dest = AUDIO_DIR / f"{tg_file.file_unique_id}.ogg"
     await tg_file.download_to_drive(custom_path=dest)
+    log.info("Voice note saved: %s (%ss)", dest.name, voice.duration)
 
-    size_kb = dest.stat().st_size / 1024
-    log.info("Voice note saved: %s (%.1f KB, %ss)", dest.name, size_kb, voice.duration)
-    await update.message.reply_text(
-        f"\U0001F3A4 Got your voice note!\n"
-        f"Duration: {voice.duration}s\n"
-        f"Size: {size_kb:.1f} KB\n"
-        f"Saved as: {dest.name}\n\n"
-        f"Transcription coming in Phase 2."
+    status = await update.message.reply_text("\U0001F442 Transcribing locally...")
+    # Whisper is CPU-blocking; run it in a worker thread so the bot stays responsive.
+    text, lang = await asyncio.to_thread(transcribe, dest)
+    dest.unlink(missing_ok=True)  # audio no longer needed once we have the text
+
+    if not text:
+        await status.edit_text("\U0001F92B I couldn't hear anything in that note.")
+        return
+
+    await status.edit_text(
+        f"\U0001F5E3 Detected language: {lang}\n\n"
+        f"“{text}”\n\n"
+        f"(Structured extraction coming in Phase 3.)"
     )
 
 
