@@ -7,10 +7,9 @@ import sqlite3
 
 logging.basicConfig(level=logging.INFO)
 
-from memory import _ensure_column, store_embedding
+from memory import store_embedding
 from storage import _connect
 
-_ensure_column()
 with _connect() as conn:
     conn.row_factory = sqlite3.Row
     rows = conn.execute(

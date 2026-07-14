@@ -37,13 +37,6 @@ def _get_encoder():
     return _encoder
 
 
-def _ensure_column() -> None:
-    with _connect() as conn:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(notes)")]
-        if "embedding" not in cols:
-            conn.execute("ALTER TABLE notes ADD COLUMN embedding BLOB")
-
-
 def embed_text(text: str) -> np.ndarray:
     """Normalized embedding vector for a text."""
     vec = _get_encoder().encode([text], normalize_embeddings=True)[0]
@@ -52,7 +45,6 @@ def embed_text(text: str) -> np.ndarray:
 
 def store_embedding(note_id: int, transcript: str, summary: str) -> None:
     """Embed transcript+summary (covers original language AND English) and save."""
-    _ensure_column()
     vec = embed_text(f"{summary}\n{transcript}")
     with _connect() as conn:
         conn.execute(
@@ -60,14 +52,16 @@ def store_embedding(note_id: int, transcript: str, summary: str) -> None:
         )
 
 
-def search(query: str, k: int = 5) -> list[dict]:
-    """Top-k notes by cosine similarity to the query."""
-    _ensure_column()
+def search(user_id: int, query: str, k: int = 5) -> list[dict]:
+    """Top-k of THIS USER's notes by cosine similarity to the query."""
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
         rows = [
             dict(r)
-            for r in conn.execute("SELECT * FROM notes WHERE embedding IS NOT NULL")
+            for r in conn.execute(
+                "SELECT * FROM notes WHERE embedding IS NOT NULL AND user_id = ?",
+                (user_id,),
+            )
         ]
     if not rows:
         return []
@@ -84,11 +78,11 @@ def search(query: str, k: int = 5) -> list[dict]:
     return results
 
 
-def ask(question: str, k: int = 4) -> str:
-    """Answer a question from the user's notes (RAG), citing note ids."""
+def ask(user_id: int, question: str, k: int = 4) -> str:
+    """Answer a question from THIS USER's notes (RAG), citing note ids."""
     from extract import _get_llm  # reuse the already-loaded LLM
 
-    hits = search(question, k)
+    hits = search(user_id, question, k)
     if not hits:
         return "I have no notes to answer from yet."
 
