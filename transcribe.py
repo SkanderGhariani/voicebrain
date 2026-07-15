@@ -38,11 +38,13 @@ def _get_model() -> WhisperModel:
 
 def transcribe(audio_path: Path, user_id: int | None = None) -> tuple[str, str]:
     """Transcribe an audio file. Returns (text, detected_language)."""
+    # Bare names only: a full sentence here (especially an English one) biases
+    # whisper's OUTPUT language and can flip a French note into English.
     prompt = None
     if user_id is not None:
         names = known_people(user_id)
         if names:
-            prompt = "Names that may appear: " + ", ".join(names[:30]) + "."
+            prompt = ", ".join(names[:30])
 
     segments, info = _get_model().transcribe(
         str(audio_path), vad_filter=True, initial_prompt=prompt

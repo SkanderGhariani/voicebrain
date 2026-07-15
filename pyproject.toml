@@ -1,0 +1,11 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+# Root-level test_*.py files are manual scripts that exercise the real models;
+# CI quality gates apply to the library code and the unit tests.
+extend-exclude = ["test_extract.py", "test_search.py", "test_tts.py", "backfill_embeddings.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]

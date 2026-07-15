@@ -14,8 +14,6 @@ import json
 import logging
 import os
 
-from llama_cpp import Llama
-
 log = logging.getLogger("voicebrain.extract")
 
 MODEL_PATH = os.getenv("LLM_MODEL_PATH", "models/Qwen2.5-7B-Instruct-Q4_K_M.gguf")
@@ -46,13 +44,19 @@ SYSTEM_PROMPT = (
     "Only extract what is actually in the transcript. Do not invent."
 )
 
-_llm: Llama | None = None
+_llm = None
 
 
-def _get_llm() -> Llama:
-    """Lazy-load the model once per process (~2GB into RAM, takes seconds)."""
+def _get_llm():
+    """Lazy-load the model once per process (several GB into RAM, takes seconds).
+
+    llama_cpp is imported here rather than at module level so the module can
+    be imported (e.g. by tests and CI) without the native dependency installed.
+    """
     global _llm
     if _llm is None:
+        from llama_cpp import Llama
+
         log.info("Loading LLM from %s ...", MODEL_PATH)
         _llm = Llama(
             model_path=MODEL_PATH,

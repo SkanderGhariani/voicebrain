@@ -166,11 +166,13 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
     hits = await asyncio.to_thread(search, update.effective_user.id, query, 5)
     if not hits:
-        await update.message.reply_text("No notes yet. Send me a voice note!")
+        await update.message.reply_text(
+            "\U0001F50E Nothing relevant in your notes for that."
+        )
         return
-    lines = ["\U0001F50E Closest notes:"]
+    lines = ["\U0001F50E Relevant notes:"]
     for h in hits:
-        lines.append(f"#{h['id']} ({h['score']:.2f}) — {h['summary']}")
+        lines.append(f"#{h['id']} — {h['summary']}")
     await update.message.reply_text("\n".join(lines))
 
 

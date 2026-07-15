@@ -44,7 +44,8 @@ def save_note(user_id: int, transcript: str, language: str, extracted: dict) -> 
     """Persist a note for a user; returns its id."""
     with _connect() as conn:
         cur = conn.execute(
-            "INSERT INTO notes (user_id, created_at, language, transcript, summary, tasks, dates, people, topics) "
+            "INSERT INTO notes (user_id, created_at, language, transcript, "
+            "summary, tasks, dates, people, topics) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 user_id,
