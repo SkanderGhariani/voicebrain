@@ -1,0 +1,13 @@
+.venv/
+.git/
+.github/
+__pycache__/
+*.pyc
+.env
+data/
+models/
+piper/
+audio_tmp/
+*.log
+tests/
+cv_versions/

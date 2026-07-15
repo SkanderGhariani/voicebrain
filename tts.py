@@ -10,6 +10,7 @@ is transcoded with PyAV (already installed as a faster-whisper dependency).
 
 import logging
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -18,7 +19,8 @@ from langdetect import LangDetectException, detect
 
 log = logging.getLogger("voicebrain.tts")
 
-PIPER_BIN = Path("piper") / "piper" / "piper.exe"
+_BIN_NAME = "piper.exe" if sys.platform == "win32" else "piper"
+PIPER_BIN = Path("piper") / "piper" / _BIN_NAME
 VOICES_DIR = Path("models") / "voices"
 
 VOICES = {

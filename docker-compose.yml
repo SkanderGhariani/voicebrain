@@ -1,0 +1,16 @@
+services:
+  voicebrain:
+    build: .
+    env_file: .env
+    environment:
+      # Lite profile suits an 8GB VPS; delete these two lines on a big machine.
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      LLM_MODEL_PATH: ${LLM_MODEL_PATH:-models/Qwen2.5-3B-Instruct-Q4_K_M.gguf}
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - hf-cache:/root/.cache/huggingface
+    restart: unless-stopped
+
+volumes:
+  hf-cache:
