@@ -80,7 +80,7 @@ async def _worker() -> None:
 
 async def _process(job: VoiceJob) -> None:
     await job.status.edit_text("\U0001F442 Transcribing locally...")
-    text, lang = await asyncio.to_thread(transcribe, job.audio_path)
+    text, lang = await asyncio.to_thread(transcribe, job.audio_path, job.user_id)
 
     if not text:
         await job.status.edit_text("\U0001F92B I couldn't hear anything in that note.")
@@ -89,7 +89,7 @@ async def _process(job: VoiceJob) -> None:
     await job.status.edit_text("\U0001F9E0 Extracting structure...")
     data = await asyncio.to_thread(extract, text, lang)
     note_id = save_note(job.user_id, text, lang, data)
-    await asyncio.to_thread(store_embedding, note_id, text, data["summary"])
+    await asyncio.to_thread(store_embedding, note_id, text, data["summary"], data["topics"])
 
     await job.status.edit_text(_format_note(note_id, lang, text, data))
 

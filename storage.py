@@ -80,6 +80,21 @@ def delete_note(user_id: int, note_id: int) -> bool:
         return cur.rowcount > 0
 
 
+def known_people(user_id: int) -> list[str]:
+    """Distinct people names across this user's notes (for the ASR glossary)."""
+    names: set[str] = set()
+    with _connect() as conn:
+        for (people_json,) in conn.execute(
+            "SELECT people FROM notes WHERE user_id = ? AND people IS NOT NULL",
+            (user_id,),
+        ):
+            try:
+                names.update(n.strip() for n in json.loads(people_json) if n.strip())
+            except (json.JSONDecodeError, TypeError):
+                continue
+    return sorted(names)
+
+
 def delete_all_notes(user_id: int) -> int:
     """Delete ALL of this user's notes. Returns how many were removed."""
     with _connect() as conn:

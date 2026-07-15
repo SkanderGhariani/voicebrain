@@ -18,7 +18,7 @@ from llama_cpp import Llama
 
 log = logging.getLogger("voicebrain.extract")
 
-MODEL_PATH = os.getenv("LLM_MODEL_PATH", "models/Qwen2.5-3B-Instruct-Q4_K_M.gguf")
+MODEL_PATH = os.getenv("LLM_MODEL_PATH", "models/Qwen2.5-7B-Instruct-Q4_K_M.gguf")
 
 SCHEMA = {
     "type": "object",
@@ -38,9 +38,9 @@ SYSTEM_PROMPT = (
     "(keep proper names as they are). Extract:\n"
     "- summary: one short sentence, what the note is about\n"
     "- tasks: concrete action items mentioned (empty list if none)\n"
-    "- dates: any dates, days or times mentioned — copy them EXACTLY as spoken, "
-    "translated to English but never changed (if the transcript says Thursday, "
-    "write Thursday, not any other day)\n"
+    "- dates: EVERY date, day or time mentioned, none skipped — copy each EXACTLY "
+    "as spoken, translated to English but never changed (if the transcript says "
+    "Thursday, write Thursday, not any other day)\n"
     "- people: names of people mentioned\n"
     "- topics: 1-3 short topic tags\n"
     "Only extract what is actually in the transcript. Do not invent."

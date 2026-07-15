@@ -12,6 +12,7 @@ citing note ids.
 
 import json
 import logging
+import os
 import sqlite3
 import time
 from datetime import datetime
@@ -22,7 +23,13 @@ from storage import DB_PATH, _connect
 
 log = logging.getLogger("voicebrain.memory")
 
-_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
+_MODEL_NAME = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-small")
+# e5 models are trained with these prefixes; retrieval quality drops without them.
+_QUERY_PREFIX = "query: "
+_PASSAGE_PREFIX = "passage: "
+
+MIN_SCORE = 0.15  # below this, a hit is noise — don't feed it to the LLM
+
 _encoder = None
 
 
@@ -37,15 +44,26 @@ def _get_encoder():
     return _encoder
 
 
-def embed_text(text: str) -> np.ndarray:
+def _embed(text: str) -> np.ndarray:
     """Normalized embedding vector for a text."""
     vec = _get_encoder().encode([text], normalize_embeddings=True)[0]
     return vec.astype(np.float32)
 
 
-def store_embedding(note_id: int, transcript: str, summary: str) -> None:
-    """Embed transcript+summary (covers original language AND English) and save."""
-    vec = embed_text(f"{summary}\n{transcript}")
+def embed_query(text: str) -> np.ndarray:
+    return _embed(_QUERY_PREFIX + text)
+
+
+def embed_passage(text: str) -> np.ndarray:
+    return _embed(_PASSAGE_PREFIX + text)
+
+
+def store_embedding(note_id: int, transcript: str, summary: str, topics: list[str] | None = None) -> None:
+    """Embed summary+transcript+topics (original language AND English) and save."""
+    parts = [summary, transcript]
+    if topics:
+        parts.append(", ".join(topics))
+    vec = embed_passage("\n".join(p for p in parts if p))
     with _connect() as conn:
         conn.execute(
             "UPDATE notes SET embedding = ? WHERE id = ?", (vec.tobytes(), note_id)
@@ -66,7 +84,7 @@ def search(user_id: int, query: str, k: int = 5) -> list[dict]:
     if not rows:
         return []
 
-    q = embed_text(query)
+    q = embed_query(query)
     mat = np.stack([np.frombuffer(r["embedding"], dtype=np.float32) for r in rows])
     sims = mat @ q  # vectors are normalized, so dot product == cosine similarity
     order = np.argsort(-sims)[:k]
@@ -78,19 +96,24 @@ def search(user_id: int, query: str, k: int = 5) -> list[dict]:
     return results
 
 
-def ask(user_id: int, question: str, k: int = 4) -> str:
+def ask(user_id: int, question: str, k: int = 6) -> str:
     """Answer a question from THIS USER's notes (RAG), citing note ids."""
     from extract import _get_llm  # reuse the already-loaded LLM
 
-    hits = search(user_id, question, k)
+    hits = [h for h in search(user_id, question, k) if h["score"] >= MIN_SCORE]
     if not hits:
-        return "I have no notes to answer from yet."
+        return "I have no notes about that yet."
 
     context_blocks = []
     for h in hits:
         day = datetime.fromtimestamp(h["created_at"]).strftime("%Y-%m-%d")
-        context_blocks.append(f"[Note #{h['id']} — {day}] {h['transcript']}")
-    context = "\n".join(context_blocks)
+        summary = h["summary"] or ""
+        context_blocks.append(
+            f"[Note #{h['id']} — recorded {day}]\n"
+            f"Transcript: {h['transcript']}\n"
+            f"Summary: {summary}"
+        )
+    context = "\n\n".join(context_blocks)
 
     resp = _get_llm().create_chat_completion(
         messages=[
@@ -98,9 +121,14 @@ def ask(user_id: int, question: str, k: int = 4) -> str:
                 "role": "system",
                 "content": (
                     "You answer questions about the user's personal voice notes. "
-                    "Use ONLY the notes provided. Cite the note ids you used, "
-                    "like (#3). If the notes don't contain the answer, say so "
-                    "plainly. Answer in the language of the question. Be brief."
+                    "Use ONLY the notes provided. Answer the question directly "
+                    "first, then cite the note ids used, like (#3). "
+                    "The transcripts come from speech recognition, so names may "
+                    "be spelled inconsistently: treat similar-sounding names as "
+                    "the same person (e.g. 'Sava' and 'Sarra') and answer using "
+                    "the name from the question. If the notes truly don't "
+                    "contain the answer, say so plainly. Answer in the language "
+                    "of the question. Be brief."
                 ),
             },
             {
