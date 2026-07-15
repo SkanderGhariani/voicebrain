@@ -1,12 +1,7 @@
-"""VoiceBrain — Telegram bot entry point.
+"""Telegram bot entry point.
 
-Voice note -> local transcription (faster-whisper) -> structured extraction
-with a local LLM (llama.cpp, schema-constrained JSON) -> per-user SQLite
-memory with embeddings (/search, /ask, /recent, /delete).
-
-Heavy work (whisper + LLM) runs through a single-worker queue: on CPU hosts,
-processing two notes concurrently would double RAM and thrash both jobs.
-Serial processing keeps resource usage bounded; users see their queue position.
+Voice notes go through a single-worker queue: whisper + the LLM are heavy,
+and running two jobs at once would double peak RAM on small hosts.
 """
 
 import asyncio
@@ -53,14 +48,13 @@ log = logging.getLogger("voicebrain")
 class VoiceJob:
     user_id: int
     audio_path: Path
-    status: Message  # the "queued/processing..." message we keep editing
+    status: Message  # progress message, edited as the job advances
 
 
 JOBS: asyncio.Queue[VoiceJob] = asyncio.Queue()
 
 
 async def _worker() -> None:
-    """Single consumer: processes voice jobs one at a time, forever."""
     while True:
         job = await JOBS.get()
         try:
@@ -80,6 +74,7 @@ async def _worker() -> None:
 
 async def _process(job: VoiceJob) -> None:
     await job.status.edit_text("\U0001F442 Transcribing locally...")
+    # to_thread: whisper and the LLM are blocking, keep the event loop free
     text, lang = await asyncio.to_thread(transcribe, job.audio_path, job.user_id)
 
     if not text:
@@ -185,7 +180,7 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     answer = await asyncio.to_thread(ask, update.effective_user.id, question)
     await status.edit_text(f"\U0001F4A1 {answer}")
 
-    # Speak the answer back (local TTS). Text stays even if TTS fails.
+    # voice reply is best-effort, the text answer is already delivered
     try:
         lang = detect_lang(answer)
         ogg = await asyncio.to_thread(synthesize, answer, lang)
@@ -235,7 +230,7 @@ async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 # ---------- app ----------
 
 async def _post_init(app: Application) -> None:
-    # Keep a reference in bot_data so the worker task isn't garbage-collected.
+    # keep a reference so the worker task isn't garbage-collected
     app.bot_data["worker"] = asyncio.create_task(_worker())
 
 

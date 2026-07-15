@@ -1,94 +1,94 @@
-# VoiceBrain 🧠🎙️
+# voicebrain
 
 [![CI](https://github.com/SkanderGhariani/voicebrain/actions/workflows/ci.yml/badge.svg)](https://github.com/SkanderGhariani/voicebrain/actions/workflows/ci.yml)
 
-**A self-hosted, multilingual voice assistant with long-term memory, on Telegram.**
+Telegram bot that turns voice notes into structured, searchable memory. Everything runs
+locally: transcription, extraction, search and text-to-speech. No cloud AI APIs.
 
-Send it a voice note in French, Arabic, English or Italian. It transcribes locally, extracts
-the structure (tasks, dates, people, topics), remembers everything, answers questions about
-your own life — and talks back. **No cloud AI APIs. Every model runs on your own machine.**
-
-> 🎬 Demo GIF coming here.
+Send it a voice note in French, Arabic, English or Italian:
 
 ```
-you   🎤 "Jeudi prochain c'est l'anniversaire de Sarra, il faut que je commande le gâteau avant mercredi."
-bot   📝 Note #20 (fr) — Tasks: order the cake · Dates: next Thursday, Wednesday · People: Sarra
+you   "Jeudi prochain c'est l'anniversaire de Sarra, il faut que je commande le gâteau avant mercredi."
+bot   Note #20 (fr)
+      Tasks: order the cake | Dates: next Thursday, Wednesday | People: Sarra
 
 you   /ask quand est l'anniversaire de Sarra ?
-bot   💡 L'anniversaire de Sarra est jeudi prochain (#20).   🔊 [voice reply]
+bot   L'anniversaire de Sarra est jeudi prochain (#20).  + voice reply
 ```
 
-## Features
+## What it does
 
-- 🎙️ **Voice notes in, structure out** — multilingual transcription with automatic language detection
-- 🧠 **Guaranteed-valid extraction** — the LLM's JSON output is grammar-constrained: malformed output is impossible by construction
-- 🔎 **Semantic memory** — two-stage retrieval (embeddings recall + cross-encoder reranking); search your notes by meaning, in any language
-- 💬 **/ask your own life** — RAG over your notes with citations, date-aware ("what do I need to do this week?"), answers in your language
-- 🗣️ **It talks back** — answers are also spoken via local neural TTS
-- 👤 **Per-user isolation** — every user of the bot has a private memory
-- 🪶 **Runs on a €5 CPU server** — no GPU required (lite profile fits 8GB RAM)
+- Transcribes voice notes locally (faster-whisper), auto language detection
+- Extracts summary, tasks, dates, people and topics with a local LLM (llama.cpp + Qwen2.5).
+  Output is JSON-schema constrained via grammar, so it always parses
+- Stores notes per user in SQLite with sentence embeddings
+- `/search`: semantic search over your notes, works across languages
+- `/ask`: answers questions from your notes with citations, aware of today's date,
+  replies with text and a spoken voice message (Piper TTS)
+- `/recent`, `/delete <id>`, `/reset`
 
-## Architecture
+## How it works
 
 ```mermaid
 flowchart LR
-    TG[Telegram] -->|voice note| Q[serial job queue]
-    Q --> W[faster-whisper\nlarge-v3-turbo + name glossary]
-    W -->|transcript| L[llama.cpp · Qwen2.5\nJSON-schema grammar]
-    L -->|structured note| DB[(SQLite\nnotes + embeddings)]
-    DB --> S1[e5 embeddings\nstage 1: recall]
-    S1 --> S2[cross-encoder\nstage 2: rerank]
-    S2 -->|/search| TG
-    S2 -->|top notes| RAG[Qwen2.5 + today's date\nRAG with citations]
-    RAG -->|text| TG
-    RAG --> TTS[Piper TTS] -->|voice reply| TG
+    TG[Telegram] --> Q[job queue]
+    Q --> W[whisper]
+    W --> L[LLM + JSON grammar]
+    L --> DB[(SQLite + embeddings)]
+    DB --> R1[embedding recall]
+    R1 --> R2[cross-encoder rerank]
+    R2 --> RAG[LLM answer + citations]
+    RAG --> TTS[TTS] --> TG
 ```
 
-**Module map** (deliberately flat — 8 files, each one responsibility):
-`bot.py` Telegram handlers + job queue · `transcribe.py` speech-to-text · `extract.py` structured extraction · `storage.py` SQLite persistence · `memory.py` embeddings, two-stage search, RAG · `tts.py` voice replies · `scripts/download_models.py` model fetcher · `tests/` unit tests (no model loads).
+- `bot.py` handlers and the job queue, `transcribe.py` speech-to-text, `extract.py`
+  structured extraction, `storage.py` SQLite, `memory.py` search and RAG, `tts.py` voice replies
+- Long polling instead of webhooks: no domain or open ports needed, runs behind NAT
+- Notes are processed by a single worker queue. Whisper plus a 7B model per note is heavy;
+  serial processing keeps RAM bounded on small hosts
+- Search is two-stage: embedding cosine similarity shortlists candidates, a cross-encoder
+  reranker scores real relevance and drops the rest. Cosine alone ranks fine but its scores
+  are too close together to filter on
+- Embeddings are compared brute force with numpy. At this scale a vector database adds
+  nothing
+- Names from your past notes are passed to whisper as `initial_prompt` so it stops
+  mishearing them. Bare names only: a full English sentence there biases the output language
+- e5 embeddings need the `query: ` / `passage: ` prefixes they were trained with
 
-## Design decisions
-
-- **Polling, not webhooks.** The bot makes outbound requests only, so it runs behind any NAT — a laptop, a Pi, a VPS — with no domain, SSL, or open ports. Webhooks win at scale; polling wins at sovereignty.
-- **Grammar-constrained JSON.** Instead of asking the model nicely and retrying on parse failures, the JSON schema is compiled to a GBNF grammar that masks illegal tokens at each decoding step. Well-formed output is guaranteed; no retry loops. (Lesson learned separately: the grammar guarantees *form*, not *truth* — prompt rules still guard content fidelity.)
-- **Two-stage retrieval.** Bi-encoder cosine scores compress into a narrow band (~0.73–0.85 here) — fine for ranking, misleading for relevance cutoffs. A cross-encoder reranker restores real separation (+4 vs −8 on the same data), so irrelevant results are filtered instead of displayed. Benchmarked on real usage before adopting.
-- **Brute-force cosine, no vector DB.** At personal-notes scale (thousands), a numpy dot product outruns the operational cost of a vector database. The right tool for 10⁶+ vectors is the wrong tool for 10³.
-- **Serial processing queue.** Whisper + a 7B LLM per note; two concurrent notes would double peak RAM on a small host. One worker, bounded resources, queue-position feedback to users.
-- **Personalized ASR glossary.** Whisper mangles names it rarely saw ("Walid" → "we did"). Names extracted from a user's past notes are fed back as whisper's `initial_prompt`, so the system learns your people. Hard-won detail: the prompt must be *bare names only* — an English carrier sentence biases whisper's output language and can flip a French note into English.
-
-## Performance (CPU-only, quality profile)
+## Performance (CPU only)
 
 | Step | Latency |
 |---|---|
-| Transcription (10s voice note) | ~5–10 s |
-| Structured extraction (Qwen 7B) | ~10–15 s |
-| /search (embed + rerank) | ~1–2 s |
-| /ask (retrieve + generate + TTS) | ~40–60 s |
+| Transcribe a 10s note | 5-10 s |
+| Extraction (7B) | 10-15 s |
+| /search | 1-2 s |
+| /ask | 40-60 s |
 
-Two profiles, switched entirely via `.env`:
-**quality** (≈10GB RAM): whisper `large-v3-turbo` + Qwen2.5-**7B** · **lite** (fits 8GB): whisper `small` + Qwen2.5-**3B**. Same code path. Any 8GB CUDA GPU can run the stack ~10x faster via llama.cpp's CUDA build.
+Two profiles via `.env`:
 
-## Known limitations
+| | Whisper | LLM | RAM |
+|---|---|---|---|
+| quality | large-v3-turbo | Qwen2.5-7B Q4 | ~10 GB |
+| lite | small | Qwen2.5-3B Q4 | fits 8 GB |
 
-- **One language per voice note** — Whisper picks a single language; code-switching mid-note produces mangled output.
-- **Glossary cold start** — a name is only protected after it has been correctly captured once.
-- **Small-model content slips** — grammar guarantees valid JSON, not correct facts; prompt rules mitigate (e.g. date fidelity), larger models reduce further.
-- **Whisper hallucinates on noise** — very short/mumbled audio can produce a random-language transcript.
+A CUDA GPU with 8 GB VRAM runs the stack much faster via llama.cpp's CUDA build.
 
-## Deploy your own
+## Limitations
 
-1. **Create a bot:** Telegram → @BotFather → `/newbot` → copy the token.
-2. **Configure:** `cp .env.example .env`, paste the token, pick a profile.
-3. **Models:** `python scripts/download_models.py lite` (or `quality`).
-4. **Run:**
-   - Docker (recommended on a server): `docker compose up -d --build`
-   - Bare: `python -m venv .venv && pip install -r requirements.txt && python bot.py`
+- One language per voice note. Code-switching mid-note confuses whisper
+- A name is only recognized reliably after it has been captured correctly once
+- The grammar guarantees valid JSON, not correct content; prompt rules mitigate
+- Very short or noisy audio can produce a wrong-language transcript
 
-Runs comfortably on an 8GB VPS (~€5–9/month) with the lite profile.
+## Run your own
 
-## Future work
+1. Telegram: talk to @BotFather, `/newbot`, copy the token
+2. `cp .env.example .env` and paste the token
+3. `python scripts/download_models.py lite` (or `quality`)
+4. `docker compose up -d --build`, or without docker:
+   `python -m venv .venv`, `pip install -r requirements.txt`, `python bot.py`
 
-Task reminders scheduled from extracted dates · hybrid keyword+vector retrieval · streaming responses · more TTS voices (Arabic, Italian).
+Runs fine on an 8 GB VPS with the lite profile.
 
 ## License
 

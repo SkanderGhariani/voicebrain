@@ -1,9 +1,4 @@
-"""VoiceBrain — note storage.
-
-SQLite, one file, zero setup. Each note belongs to a Telegram user
-(user_id); every read path filters on it so users only ever see their
-own memory. Embeddings for semantic search live in the same table.
-"""
+"""SQLite note storage. Every read path filters on user_id."""
 
 import json
 import sqlite3
@@ -31,7 +26,7 @@ def _connect() -> sqlite3.Connection:
             embedding BLOB
         )"""
     )
-    # Migrations for DBs created before these columns existed.
+    # migrations for older DBs
     cols = [r[1] for r in conn.execute("PRAGMA table_info(notes)")]
     if "user_id" not in cols:
         conn.execute("ALTER TABLE notes ADD COLUMN user_id INTEGER")
@@ -82,7 +77,7 @@ def delete_note(user_id: int, note_id: int) -> bool:
 
 
 def known_people(user_id: int) -> list[str]:
-    """Distinct people names across this user's notes (for the ASR glossary)."""
+    """Distinct people names across this user's notes, for the whisper glossary."""
     names: set[str] = set()
     with _connect() as conn:
         for (people_json,) in conn.execute(

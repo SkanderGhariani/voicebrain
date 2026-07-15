@@ -1,9 +1,4 @@
-"""Extraction contract tests: schema shape and prompt regression guards.
-
-The LLM itself is never loaded here — these tests pin down the contract that
-the rest of the system (storage, bot formatting) depends on, and guard the
-prompt rules that past bugs taught us to keep (no invention, date fidelity).
-"""
+"""Schema and prompt-rule tests (no LLM load)."""
 
 import sys
 from pathlib import Path
@@ -30,6 +25,5 @@ def test_prompt_keeps_do_not_invent_rule():
 
 
 def test_prompt_keeps_date_fidelity_rule():
-    # Regression guard: the model once swapped Thursday for Friday.
     assert "EXACTLY" in extract.SYSTEM_PROMPT
     assert "EVERY date" in extract.SYSTEM_PROMPT

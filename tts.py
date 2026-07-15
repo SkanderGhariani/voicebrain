@@ -1,12 +1,6 @@
-"""VoiceBrain — local text-to-speech.
-
-Uses Piper (neural TTS, runs offline on CPU) via its CLI binary to speak
-answers back as Telegram voice messages. One voice model per language;
-unsupported languages fall back to English.
-
-Telegram voice messages must be OGG/Opus, so the WAV that Piper produces
-is transcoded with PyAV (already installed as a faster-whisper dependency).
-"""
+"""Local text-to-speech via the Piper CLI. One voice per language, English
+fallback. Piper outputs WAV; Telegram voice messages need OGG/Opus, so we
+transcode with PyAV."""
 
 import logging
 import subprocess
@@ -35,7 +29,6 @@ def available() -> bool:
 
 
 def detect_lang(text: str) -> str:
-    """Best-effort language of a text, for voice selection."""
     try:
         return detect(text)
     except LangDetectException:
@@ -43,7 +36,7 @@ def detect_lang(text: str) -> str:
 
 
 def synthesize(text: str, lang: str) -> Path | None:
-    """Text -> OGG/Opus voice file. Returns path, or None if TTS unavailable."""
+    """Text -> OGG/Opus file, or None if piper isn't installed."""
     if not available():
         return None
     voice = VOICES.get(lang, VOICES[DEFAULT_LANG])
@@ -67,7 +60,6 @@ def synthesize(text: str, lang: str) -> Path | None:
 
 
 def _wav_to_opus(wav: Path, ogg: Path) -> None:
-    """Transcode WAV -> OGG/Opus (Telegram's required voice-note format)."""
     with av.open(str(wav)) as inp, av.open(str(ogg), "w", format="ogg") as out:
         stream = out.add_stream("libopus", rate=48000)
         for frame in inp.decode(audio=0):

@@ -1,15 +1,7 @@
-"""VoiceBrain — local speech-to-text.
+"""Local speech-to-text with faster-whisper (CPU).
 
-Wraps faster-whisper (CTranslate2 port of OpenAI Whisper), fully on CPU.
-Default model is large-v3-turbo: near large-v3 accuracy at a fraction of
-the compute. Set WHISPER_MODEL=small (or tiny/base) in .env for lighter
-hosts — the 8GB-VPS "lite" profile uses small.
-
-Name glossary: Whisper often mangles names it has rarely seen (Tunisian
-names especially: "Walid" -> "we did"). Whisper accepts an initial_prompt
-that biases decoding, so we feed it the names already present in THIS
-user's notes. Once a name is written once, it is recognized afterwards —
-personalized ASR adaptation for free.
+Names from the user's past notes are passed as initial_prompt so whisper
+stops mishearing them.
 """
 
 import logging
@@ -27,19 +19,16 @@ _model: WhisperModel | None = None
 
 
 def _get_model() -> WhisperModel:
-    """Lazy-load the model once per process (loading takes seconds)."""
     global _model
     if _model is None:
-        log.info("Loading whisper model '%s' (first run downloads it)...", _MODEL_NAME)
+        log.info("Loading whisper model '%s'...", _MODEL_NAME)
         _model = WhisperModel(_MODEL_NAME, device="cpu", compute_type="int8")
-        log.info("Whisper model ready.")
     return _model
 
 
 def transcribe(audio_path: Path, user_id: int | None = None) -> tuple[str, str]:
-    """Transcribe an audio file. Returns (text, detected_language)."""
-    # Bare names only: a full sentence here (especially an English one) biases
-    # whisper's OUTPUT language and can flip a French note into English.
+    """Returns (text, detected_language)."""
+    # bare names only: a full sentence here biases whisper's output language
     prompt = None
     if user_id is not None:
         names = known_people(user_id)

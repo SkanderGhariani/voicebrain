@@ -1,9 +1,4 @@
-"""Download all models for a chosen profile. Run once before starting the bot.
-
-Usage:
-    python scripts/download_models.py            # lite profile (fits 8GB RAM)
-    python scripts/download_models.py quality    # big models (needs ~10GB RAM)
-"""
+"""Download models for a profile: python scripts/download_models.py [lite|quality]"""
 
 import sys
 from pathlib import Path

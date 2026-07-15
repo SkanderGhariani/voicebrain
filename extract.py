@@ -1,13 +1,7 @@
-"""VoiceBrain — structured extraction with a local LLM.
+"""Structured extraction from transcripts with a local LLM (llama.cpp).
 
-Takes a raw transcript (any language) and produces structured English data:
-summary, tasks, dates, people, topics. Runs Qwen2.5-3B-Instruct (GGUF, Q4)
-fully locally via llama.cpp.
-
-The key technique: JSON-schema-constrained generation. llama.cpp compiles the
-schema into a GBNF grammar that masks invalid tokens at every decoding step,
-so the model is physically unable to produce anything but valid JSON matching
-the schema. No retries, no "please output JSON" prayers.
+Output is constrained to SCHEMA via llama.cpp's JSON-schema grammar, so it
+always parses.
 """
 
 import json
@@ -48,11 +42,7 @@ _llm = None
 
 
 def _get_llm():
-    """Lazy-load the model once per process (several GB into RAM, takes seconds).
-
-    llama_cpp is imported here rather than at module level so the module can
-    be imported (e.g. by tests and CI) without the native dependency installed.
-    """
+    # llama_cpp imported lazily so tests/CI can import this module without it
     global _llm
     if _llm is None:
         from llama_cpp import Llama
@@ -69,7 +59,7 @@ def _get_llm():
 
 
 def extract(transcript: str, language: str) -> dict:
-    """Extract structured data from a transcript. Always returns schema-valid dict."""
+    """Transcript -> schema-valid dict."""
     resp = _get_llm().create_chat_completion(
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},

@@ -3,7 +3,7 @@ services:
     build: .
     env_file: .env
     environment:
-      # Lite profile suits an 8GB VPS; delete these two lines on a big machine.
+      # defaults to the lite profile, override in .env
       WHISPER_MODEL: ${WHISPER_MODEL:-small}
       LLM_MODEL_PATH: ${LLM_MODEL_PATH:-models/Qwen2.5-3B-Instruct-Q4_K_M.gguf}
     volumes:

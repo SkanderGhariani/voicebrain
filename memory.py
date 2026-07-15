@@ -1,23 +1,7 @@
-"""VoiceBrain — semantic memory.
+"""Semantic memory: embeddings, two-stage search (recall + rerank), and RAG /ask.
 
-Two-stage retrieval, the way production RAG systems do it:
-
-  Stage 1 — RECALL: a bi-encoder (multilingual-e5) embeds every note once and
-  the query at search time; cosine similarity shortlists the top candidates.
-  Fast (one matrix multiply), but its scores compress into a narrow band, so
-  it can't tell "relevant" from "vaguely similar".
-
-  Stage 2 — PRECISION: a cross-encoder reranker reads the query and each
-  candidate TOGETHER and scores actual relevance. Slower per pair, but there
-  are only ~10 pairs. Irrelevant candidates score clearly negative, so we can
-  filter them out instead of showing noise.
-
-Embeddings live as float32 blobs in SQLite and are compared brute-force with
-numpy: at personal-notes scale (thousands, not millions), a vector database
-would add complexity for zero measurable gain.
-
-/ask is retrieval-augmented generation (RAG): retrieve relevant notes, hand
-them to the local LLM with today's date, answer ONLY from them, cite ids.
+Embeddings are stored as float32 blobs in SQLite and compared brute force with
+numpy, which is plenty at this scale.
 """
 
 import json
@@ -33,7 +17,7 @@ from storage import _connect
 log = logging.getLogger("voicebrain.memory")
 
 EMBED_MODEL = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-small")
-# e5 models are trained with these prefixes; retrieval quality drops without them.
+# e5 was trained with these prefixes; retrieval degrades without them
 _QUERY_PREFIX = "query: "
 _PASSAGE_PREFIX = "passage: "
 
@@ -108,7 +92,7 @@ def _recall(user_id: int, query: str, k: int) -> list[dict]:
 
     q = _embed(_QUERY_PREFIX + query)
     mat = np.stack([np.frombuffer(r["embedding"], dtype=np.float32) for r in rows])
-    sims = mat @ q  # normalized vectors: dot product == cosine similarity
+    sims = mat @ q  # vectors are normalized, dot == cosine
     order = np.argsort(-sims)
     results = []
     for i in order[:k]:
@@ -119,12 +103,8 @@ def _recall(user_id: int, query: str, k: int) -> list[dict]:
 
 
 def search(user_id: int, query: str, k: int = 5) -> list[dict]:
-    """Two-stage search. Returns up to k notes that are actually relevant.
-
-    With reranking enabled, `score` on each result is the cross-encoder logit
-    (positive = relevant); candidates under RERANK_THRESHOLD are dropped, so
-    the result list may be empty — that's a feature, not a bug.
-    """
+    """Cosine shortlist, then cross-encoder rerank. May return fewer than k
+    (or none) once candidates under RERANK_THRESHOLD are dropped."""
     candidates = _recall(user_id, query, RECALL_K)
     if not candidates or not RERANK_ENABLED:
         return candidates[:k]
@@ -138,8 +118,8 @@ def search(user_id: int, query: str, k: int = 5) -> list[dict]:
 
 
 def ask(user_id: int, question: str, k: int = 8) -> str:
-    """Answer a question from THIS USER's notes (RAG), citing note ids."""
-    from extract import _get_llm  # reuse the already-loaded LLM
+    """Answer a question from the user's notes, citing note ids."""
+    from extract import _get_llm
 
     hits = search(user_id, question, k)
     if not hits:

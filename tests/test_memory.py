@@ -1,8 +1,4 @@
-"""Memory layer tests with fake models: ranking, filtering, isolation.
-
-No real models are loaded: a deterministic fake encoder maps keyword hits to
-axes of a small vector space, and a fake reranker scores by word overlap.
-"""
+"""Search/RAG tests with fake encoder and reranker (no model downloads)."""
 
 import sys
 from pathlib import Path
@@ -29,7 +25,7 @@ _KEYWORDS = ["pizza", "plumber", "wedding"]
 
 
 class FakeEncoder:
-    """Text -> unit vector; axis i lights up if keyword i appears."""
+    """Text -> unit vector, one axis per keyword."""
 
     def encode(self, texts, normalize_embeddings=True):
         out = []
@@ -46,7 +42,7 @@ class FakeEncoder:
 
 
 class FakeReranker:
-    """Positive score iff a content word from the query appears in the passage."""
+    """Positive score when a query word appears in the passage."""
 
     def predict(self, pairs):
         scores = []

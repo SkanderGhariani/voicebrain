@@ -1,4 +1,4 @@
-"""Storage layer tests: persistence, per-user isolation, deletion, glossary."""
+"""Storage tests."""
 
 import sys
 from pathlib import Path
