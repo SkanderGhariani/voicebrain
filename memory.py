@@ -123,6 +123,10 @@ def ask(user_id: int, question: str, k: int = 8) -> str:
 
     hits = search(user_id, question, k)
     if not hits:
+        # broad questions ("what do I need to do?") can score below the rerank
+        # threshold on every note; fall back to cosine order and let the LLM judge
+        hits = _recall(user_id, question, 4)
+    if not hits:
         return "I have no notes about that yet."
 
     context_blocks = []

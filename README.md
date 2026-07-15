@@ -55,23 +55,29 @@ flowchart LR
   mishearing them. Bare names only: a full English sentence there biases the output language
 - e5 embeddings need the `query: ` / `passage: ` prefixes they were trained with
 
-## Performance (CPU only)
+## Performance
 
-| Step | Latency |
+Measured with `scripts/bench.py` on an i9-14900HX (CPU only, quality profile,
+synthetic speech input; real recordings may transcribe a bit slower):
+
+| Step | Warm latency |
 |---|---|
-| Transcribe a 10s note | 5-10 s |
-| Extraction (7B) | 10-15 s |
-| /search | 1-2 s |
-| /ask | 40-60 s |
+| Transcribe an ~11s note | 9 s |
+| Extraction (7B) | 11-13 s |
+| /search | < 1 s |
+| /ask | ~11 s |
+
+First use after startup is slower while models load. The lite profile is not
+benchmarked yet.
 
 Two profiles via `.env`:
 
-| | Whisper | LLM | RAM |
+| | Whisper | LLM | Target |
 |---|---|---|---|
-| quality | large-v3-turbo | Qwen2.5-7B Q4 | ~10 GB |
-| lite | small | Qwen2.5-3B Q4 | fits 8 GB |
+| quality | large-v3-turbo | Qwen2.5-7B Q4 | ~10 GB RAM |
+| lite | small | Qwen2.5-3B Q4 | 8 GB hosts |
 
-A CUDA GPU with 8 GB VRAM runs the stack much faster via llama.cpp's CUDA build.
+A CUDA GPU can run the stack much faster via llama.cpp's CUDA build.
 
 ## Limitations
 
@@ -88,7 +94,7 @@ A CUDA GPU with 8 GB VRAM runs the stack much faster via llama.cpp's CUDA build.
 4. `docker compose up -d --build`, or without docker:
    `python -m venv .venv`, `pip install -r requirements.txt`, `python bot.py`
 
-Runs fine on an 8 GB VPS with the lite profile.
+The lite profile targets 8 GB hosts.
 
 ## License
 
