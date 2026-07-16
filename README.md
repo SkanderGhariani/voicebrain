@@ -96,6 +96,14 @@ A CUDA GPU can run the stack much faster via llama.cpp's CUDA build.
 
 The lite profile targets 8 GB hosts.
 
+## Possible improvements
+
+- GPU offload: llama.cpp's CUDA build with `n_gpu_layers` makes generation several
+  times faster on any 8 GB GPU
+- Task reminders scheduled from the extracted dates
+- Hybrid keyword + vector retrieval
+- More TTS voices (Arabic, Italian)
+
 ## License
 
 MIT

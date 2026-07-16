@@ -27,3 +27,7 @@ def test_prompt_keeps_do_not_invent_rule():
 def test_prompt_keeps_date_fidelity_rule():
     assert "EXACTLY" in extract.SYSTEM_PROMPT
     assert "EVERY date" in extract.SYSTEM_PROMPT
+
+
+def test_prompt_keeps_every_task_rule():
+    assert "EVERY concrete action item" in extract.SYSTEM_PROMPT

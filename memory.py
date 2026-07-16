@@ -25,6 +25,11 @@ RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H38
 RERANK_ENABLED = os.getenv("RERANK", "1") != "0"  # lite profile can disable
 RERANK_THRESHOLD = float(os.getenv("RERANK_THRESHOLD", "0.0"))
 
+# The reranker scores short queries low and can filter every candidate. When that
+# happens we fall back to cosine order, but only if the best cosine score clears
+# this bar (with e5 here, real hits measure >= ~0.82, junk tops out ~0.79).
+COSINE_FALLBACK_MIN = float(os.getenv("COSINE_FALLBACK_MIN", "0.81"))
+
 RECALL_K = 10  # stage-1 shortlist size
 
 _encoder = None
@@ -111,10 +116,15 @@ def search(user_id: int, query: str, k: int = 5) -> list[dict]:
 
     pairs = [(query, _note_text(c["summary"], c["transcript"])) for c in candidates]
     scores = _get_reranker().predict(pairs)
-    for c, s in zip(candidates, scores):
-        c["score"] = float(s)
-    candidates.sort(key=lambda c: -c["score"])
-    return [c for c in candidates if c["score"] >= RERANK_THRESHOLD][:k]
+    reranked = sorted(
+        (dict(c, score=float(s)) for c, s in zip(candidates, scores)),
+        key=lambda c: -c["score"],
+    )
+    kept = [c for c in reranked if c["score"] >= RERANK_THRESHOLD][:k]
+    if kept:
+        return kept
+    # everything filtered; keep the cosine hits that are confident on their own
+    return [c for c in candidates if c["score"] >= COSINE_FALLBACK_MIN][:3]
 
 
 def ask(user_id: int, question: str, k: int = 8) -> str:
@@ -122,10 +132,6 @@ def ask(user_id: int, question: str, k: int = 8) -> str:
     from extract import _get_llm
 
     hits = search(user_id, question, k)
-    if not hits:
-        # broad questions ("what do I need to do?") can score below the rerank
-        # threshold on every note; fall back to cosine order and let the LLM judge
-        hits = _recall(user_id, question, 4)
     if not hits:
         return "I have no notes about that yet."
 

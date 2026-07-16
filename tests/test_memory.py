@@ -98,8 +98,20 @@ def test_rerank_disabled_falls_back_to_cosine_order():
     assert plumber_id in ids, "without reranking nothing is filtered out"
 
 
-def test_threshold_is_tunable():
-    _add_note(ALICE, "try the new pizza place", "pizza plan")
+def test_cosine_fallback_when_rerank_filters_all():
+    # reranker rejects everything, but cosine is confident -> fall back
+    pizza_id = _add_note(ALICE, "try the new pizza place", "pizza plan")
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(memory, "RERANK_THRESHOLD", 10.0)  # above the fake's max score
-        assert memory.search(ALICE, "pizza restaurant") == []
+        mp.setattr(memory, "COSINE_FALLBACK_MIN", 0.9)
+        hits = memory.search(ALICE, "pizza restaurant")
+    assert [h["id"] for h in hits] == [pizza_id]
+
+
+def test_no_fallback_when_cosine_is_weak():
+    # reranker rejects everything and cosine is unsure -> stay empty
+    _add_note(ALICE, "try the new pizza place", "pizza plan")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(memory, "RERANK_THRESHOLD", 10.0)
+        mp.setattr(memory, "COSINE_FALLBACK_MIN", 1.1)  # unreachable
+        assert memory.search(ALICE, "couscous recipe") == []
